@@ -1,4 +1,5 @@
 library("KEGGREST")
+library("KEGGgraph")
 
 # FUNCTIONS FOR PARSING INPUT
 promptInput <- function(){
@@ -21,7 +22,6 @@ parseInput <- function(s){
 	}else{ # exit error
 		stop(paste("Invalid argument:",s[1]))
 	}
-	summary(s)
 }
 makeOutDir <- function(outdir){ # makes output and formats dir name
 	if(is.na(outdir)) # exit error
@@ -36,24 +36,49 @@ makeOutDir <- function(outdir){ # makes output and formats dir name
 # FUNCTIONS FOR GETTING KO IDS
 getKO <- function(fname,outdir){
 	fin <- file(fname,open="r") # read file with one gene name per line
-	cat(paste(outdir,"KO_genelist.txt\n",sep=""))
 	fout <- file(paste(outdir,"KO_genelist.txt",sep=""),open="w")
 	genes <- readLines(fin)
-	for (i in 1:length(genes)){
-		ko <- names(keggFind("ko",genes[i]))
+	for(i in 1:length(genes)){
+		ko <- names(keggFind("hsa",genes[i]))
 		if(length(ko)==0){
-			cat(paste("KO for",genes[i],"not found, line skipped\n"))
+			cat(paste("ID for",genes[i],"in organism hsa not found, line skipped\n"))
 			next
 		}
 		writeLines(paste(genes[i],ko[1],sep="\t"),fout)
 	}
 	close(fin)
 	close(fout)
+	cat(paste("Wrote new ids of genes to ",outdir,"KO_genelist.txt\n",sep=""))
 }
 
 # FUNCTIONS FOR MAKING CYTOSCAPE OUTPUT
 makeNetwork <- function(fname,outdir){
-	cat(paste(outdir,"KO_",fname,sep = ""))
+	# read input file and save gene ids
+	genes <- c()
+	fin <- file(fname,open="r")
+	lines <- readLines(fin)
+	for(i in 1:length(lines)){
+		genes <- append(genes,unlist(strsplit(lines[i],"\t"))[2])
+	}
+	close(fin)
+	# map between pathways and target genes within them
+	pathsfound <- keggLink("pathway",genes)
+	pathsmapped <- new.env(hash = TRUE)
+	for(i in seq_along(pathsfound)){
+		p <- pathsfound[[i]]
+		if(substring(p,1,8) != "path:map") # only take pathway maps
+			next
+		if(! p %in% names(pathsmapped)) # if pathway isn't initialized yet, initialize it
+			pathsmapped[[p]] <- c()
+		pathsmapped[[p]] <- append(pathsmapped[[p]],names(pathsfound)[i])
+	}
+	# get interactions between target genes in each pathway found
+	for(targpath in names(pathsmapped)){
+		if(length(pathsmapped[[targpath]])<2) # only care about 
+			next
+		tmp <- tempfile()
+		retrieveKGML(targpath, organism="hsa", destfile=tmp, method="wget", quiet=TRUE)
+	}
 }
 
 # MAIN
