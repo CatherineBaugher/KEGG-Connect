@@ -91,22 +91,27 @@ makeNetwork <- function(fname,org,outdir){
 		#cat("taking new path\n")
 		genes <- pathsmapped[[targpath]]
 		for(g in genes){
-			traverseGene(gedges,g,g,genes[genes!=g],targpath,namekey,cytoedges) # find if path exists from gene to any target
+			traverseGene(gedges,g,g,genes[genes!=g],targpath,kgml,namekey,cytoedges) # find if path exists from gene to any target
 		}
 	}
 	close(cytoedges)
 }
-traverseGene <- function(graph,gene,t1,targets,pathname,namekey,fout){
+traverseGene <- function(graph,gene,t1,targets,pathname,mapkG,namekey,fout){
 	if(length(graph[[gene]]) == 0) # reached a dead end
 		return(graph)
 	children <- graph[[gene]]
 	graph[[gene]] <- c()  # remove node after traversed
 	for(c in children){
 		if(c %in% targets){
-			writeLines(paste(namekey[[t1]],pathname,namekey[[c]],sep=" "),fout)
+			edat <- getKEGGedgeData(mapkG,paste(t1,"~",c,sep="")) # get edge info so we can mark type
+			if(is.null(edat))
+				etype <- "indirect"
+			else
+				etype <- getName(getSubtype(edat)[[1]])
+			writeLines(paste(namekey[[t1]],etype,namekey[[c]],sep=" "),fout)
 		}
 		# go as far down as possible, updating graph to avoid retracing
-		graph<-traverseGene(graph,c,t1,targets,pathname,namekey,fout)
+		graph<-traverseGene(graph,c,t1,targets,mapkG,pathname,namekey,fout)
 	}
 }
 
