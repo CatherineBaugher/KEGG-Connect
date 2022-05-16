@@ -4,21 +4,20 @@ library("KEGGgraph")
 # FUNCTIONS FOR PARSING INPUT
 promptInput <- function(){
 	cat("Options:\n
-		Make network from input with KO ids: c [filename] [outputdir]\n
-		Make network from input with only gene names: cg [filename] [outputdir]\n")
+		Make network from input with KO ids: c [organism] [filename] [outputdir]\n
+		Make network from input with only gene names: cg [organism] [filename] [outputdir]\n")
 	cat("Please enter command: ")
 	userinp <- readLines("stdin",n=1)
 	parseInput(strsplit(userinp," "))
 }
 parseInput <- function(s){
+	dir <- makeOutDir(s[4])
 	# check for each option
-	if(s[1] == "cg"){ # get KO ids and make network
-		dir <- makeOutDir(s[3])
-		getKO(s[2],dir)
-		makeNetwork(paste(dir,"KO_genelist.txt",sep=""),dir)
-	}else if(s[1] == "c"){ # already have KO ids
-		dir <- makeOutDir(s[2])
-		makeNetwork(s[1],dir)
+	if(s[1] == "cg"){ # get ids and make network
+		getIDs(s[3],s[2],dir)
+		makeNetwork(paste(dir,s[2],"_genelist.txt",sep=""),s[2],dir)
+	}else if(s[1] == "c"){ # already have ids
+		makeNetwork(s[3],dir)
 	}else{ # exit error
 		stop(paste("Invalid argument:",s[1]))
 	}
@@ -33,26 +32,32 @@ makeOutDir <- function(outdir){ # makes output and formats dir name
 		return(paste(outdir,"/",sep="")) # format outdir with backslash
 }
 
-# FUNCTIONS FOR GETTING KO IDS
-getKO <- function(fname,outdir){
+# FUNCTIONS FOR GETTING IDS
+getIDs <- function(fname,org,outdir){
 	fin <- file(fname,open="r") # read file with one gene name per line
-	fout <- file(paste(outdir,"KO_genelist.txt",sep=""),open="w")
+	fout <- file(paste(outdir,org,"_genelist.txt",sep=""),open="w")
 	genes <- readLines(fin)
 	for(i in 1:length(genes)){
-		ko <- names(keggFind("hsa",genes[i]))
-		if(length(ko)==0){
-			cat(paste("ID for",genes[i],"in organism hsa not found, line skipped\n"))
-			next
+		found = FALSE
+		kf <- keggFind(org,genes[i])
+		for(hit in names(kf)){ # check for exact match across each entry of keggfind
+			gnames <- unlist(strsplit(kf[hit],";"))[1] # KEGG puts known aliases before a semicolon, then separates with commas
+			if(genes[i] %in% unlist(strsplit(gnames,", "))){
+				found = TRUE
+				writeLines(paste(genes[i],hit,sep="\t"),fout)
+				break
+			}
 		}
-		writeLines(paste(genes[i],ko[1],sep="\t"),fout)
+		if(!found)
+			cat(paste("ID for",genes[i],"in organism",org,"not found, line skipped\n"))
 	}
 	close(fin)
 	close(fout)
-	cat(paste("Wrote new ids of genes to ",outdir,"KO_genelist.txt\n",sep=""))
+	cat(paste("Wrote new ids of genes to ",outdir,org,"_genelist.txt\n",sep=""))
 }
 
 # FUNCTIONS FOR MAKING CYTOSCAPE OUTPUT
-makeNetwork <- function(fname,outdir){
+makeNetwork <- function(fname,org,outdir){
 	# read input file and save gene ids
 	genes <- c()
 	fin <- file(fname,open="r")
@@ -74,10 +79,15 @@ makeNetwork <- function(fname,outdir){
 	}
 	# get interactions between target genes in each pathway found
 	for(targpath in names(pathsmapped)){
-		if(length(pathsmapped[[targpath]])<2) # only care about 
+		if(length(pathsmapped[[targpath]])<2) # only care about pathways with two or more genes
 			next
 		tmp <- tempfile()
-		retrieveKGML(targpath, organism="hsa", destfile=tmp, method="wget", quiet=TRUE)
+		kgml <- retrieveKGML(targpath, organism=org, destfile=tmp, method="wget", quiet=TRUE)
+		gedges <- edges(parseKGML2Graph(kgml,expandGenes=TRUE, genesOnly = TRUE))
+		# traverse graph downstream from each gene and make directed connection if it exists
+		for(gene in pathsmapped[[targpath]]){
+			foundconnects <- c()
+		}
 	}
 }
 
