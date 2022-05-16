@@ -17,7 +17,7 @@ parseInput <- function(s){
 		getIDs(s[3],s[2],dir)
 		makeNetwork(paste(dir,s[2],"_genelist.txt",sep=""),s[2],dir)
 	}else if(s[1] == "c"){ # already have ids
-		makeNetwork(s[3],dir)
+		makeNetwork(s[3],s[2],dir)
 	}else{ # exit error
 		stop(paste("Invalid argument:",s[1]))
 	}
@@ -71,13 +71,12 @@ makeNetwork <- function(fname,org,outdir){
 	pathsmapped <- new.env(hash = TRUE)
 	for(i in seq_along(pathsfound)){
 		p <- pathsfound[[i]]
-		if(substring(p,1,8) != "path:map") # only take pathway maps
-			next
 		if(! p %in% names(pathsmapped)) # if pathway isn't initialized yet, initialize it
 			pathsmapped[[p]] <- c()
 		pathsmapped[[p]] <- append(pathsmapped[[p]],names(pathsfound)[i])
 	}
 	# get interactions between target genes in each pathway found
+	cytoedges <- file(paste(outdir,"cytograph.sif",sep=""),open="w")
 	for(targpath in names(pathsmapped)){
 		if(length(pathsmapped[[targpath]])<2) # only care about pathways with two or more genes
 			next
@@ -85,11 +84,29 @@ makeNetwork <- function(fname,org,outdir){
 		kgml <- retrieveKGML(targpath, organism=org, destfile=tmp, method="wget", quiet=TRUE)
 		gedges <- edges(parseKGML2Graph(kgml,expandGenes=TRUE, genesOnly = TRUE))
 		# traverse graph downstream from each gene and make directed connection if it exists
-		for(gene in pathsmapped[[targpath]]){
+		cat("taking new path\n")
+		genes <- pathsmapped[[targpath]]
+		for(g in genes){
 			foundconnects <- c()
+			traverseGene(gedges,g,genes[genes!=g],targpath,cytoedges) # find if path exists from gene to any target
 		}
 	}
+	close(cytoedges)
 }
+traverseGene <- function(graph,gene,targets,pathname,fout){
+	if(length(graph[[gene]]) == 0) # reached a dead end
+		return(graph)
+	children <- graph[[gene]]
+	graph[[gene]] <- c()  # remove node after traversed
+	for(c in children){
+		if(c %in% targets){
+			writeLines(paste(gene,pathname,c,sep=" "),fout)
+		}
+		# go as far down as possible, updating graph to avoid retracing
+		graph<-traverseGene(graph,c,targets,pathname,fout)
+	}
+}
+
 
 # MAIN
 args <- commandArgs(trailingOnly = TRUE)
