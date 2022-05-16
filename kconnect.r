@@ -60,10 +60,13 @@ getIDs <- function(fname,org,outdir){
 makeNetwork <- function(fname,org,outdir){
 	# read input file and save gene ids
 	genes <- c()
+	namekey <- new.env(hash = TRUE)
 	fin <- file(fname,open="r")
 	lines <- readLines(fin)
 	for(i in 1:length(lines)){
-		genes <- append(genes,unlist(strsplit(lines[i],"\t"))[2])
+		lsplit <- unlist(strsplit(lines[i],"\t"))
+		genes <- append(genes,lsplit[2])
+		namekey[[lsplit[2]]] <- lsplit[1] 
 	}
 	close(fin)
 	# map between pathways and target genes within them
@@ -77,6 +80,7 @@ makeNetwork <- function(fname,org,outdir){
 	}
 	# get interactions between target genes in each pathway found
 	cytoedges <- file(paste(outdir,"cytograph.sif",sep=""),open="w")
+	#log <- file(paste(outdir,"edgelog.txt",sep=""),open="w")
 	for(targpath in names(pathsmapped)){
 		if(length(pathsmapped[[targpath]])<2) # only care about pathways with two or more genes
 			next
@@ -84,26 +88,25 @@ makeNetwork <- function(fname,org,outdir){
 		kgml <- retrieveKGML(targpath, organism=org, destfile=tmp, method="wget", quiet=TRUE)
 		gedges <- edges(parseKGML2Graph(kgml,expandGenes=TRUE, genesOnly = TRUE))
 		# traverse graph downstream from each gene and make directed connection if it exists
-		cat("taking new path\n")
+		#cat("taking new path\n")
 		genes <- pathsmapped[[targpath]]
 		for(g in genes){
-			foundconnects <- c()
-			traverseGene(gedges,g,genes[genes!=g],targpath,cytoedges) # find if path exists from gene to any target
+			traverseGene(gedges,g,g,genes[genes!=g],targpath,namekey,cytoedges) # find if path exists from gene to any target
 		}
 	}
 	close(cytoedges)
 }
-traverseGene <- function(graph,gene,targets,pathname,fout){
+traverseGene <- function(graph,gene,t1,targets,pathname,namekey,fout){
 	if(length(graph[[gene]]) == 0) # reached a dead end
 		return(graph)
 	children <- graph[[gene]]
 	graph[[gene]] <- c()  # remove node after traversed
 	for(c in children){
 		if(c %in% targets){
-			writeLines(paste(gene,pathname,c,sep=" "),fout)
+			writeLines(paste(namekey[[t1]],pathname,namekey[[c]],sep=" "),fout)
 		}
 		# go as far down as possible, updating graph to avoid retracing
-		graph<-traverseGene(graph,c,targets,pathname,fout)
+		graph<-traverseGene(graph,c,t1,targets,pathname,namekey,fout)
 	}
 }
 
