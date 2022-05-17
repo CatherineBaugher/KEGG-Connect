@@ -41,5 +41,4 @@ Rscript kconnect.r cg hsa ./exampledata/genelist.txt test
 
 ## To-do
 - Improve runtime
-- Collapse edges and simply note the corresponding pathways in an output file (currently gives an edge for every pathway between pairs of genes)
-- Special formatting of nodes and edges
+- Format nodes to show gene types or pathways
