@@ -80,38 +80,50 @@ makeNetwork <- function(fname,org,outdir){
 	}
 	# get interactions between target genes in each pathway found
 	cytoedges <- file(paste(outdir,"cytograph.sif",sep=""),open="w")
-	#log <- file(paste(outdir,"edgelog.txt",sep=""),open="w")
+	allfoundpaths <- c()
 	for(targpath in names(pathsmapped)){
 		if(length(pathsmapped[[targpath]])<2) # only care about pathways with two or more genes
 			next
 		tmp <- tempfile()
 		kgml <- retrieveKGML(targpath, organism=org, destfile=tmp, method="wget", quiet=TRUE)
-		gedges <- edges(parseKGML2Graph(kgml,expandGenes=TRUE, genesOnly = TRUE))
+		parsed <- parseKGML2Graph(kgml,expandGenes=TRUE, genesOnly = TRUE)
+		gedges <- edges(parsed)
 		# traverse graph downstream from each gene and make directed connection if it exists
-		#cat("taking new path\n")
+		cat("taking new path\n")
 		genes <- pathsmapped[[targpath]]
-		for(g in genes){
-			traverseGene(gedges,g,g,genes[genes!=g],targpath,kgml,namekey,cytoedges) # find if path exists from gene to any target
+		for(groot in genes){
+			newg <- new.env()
+			newg$edges <- gedges
+			newg$root <- groot
+			newg$targets <- genes[genes!=groot]
+			newg$foundpaths <- allfoundpaths
+			traverseGene(newg,groot,parsed,namekey,cytoedges) # find if path exists from gene to any target
+			allfoundpaths <- newg$foundpaths
 		}
 	}
 	close(cytoedges)
 }
-traverseGene <- function(graph,gene,t1,targets,pathname,mapkG,namekey,fout){
-	if(length(graph[[gene]]) == 0) # reached a dead end
-		return(graph)
-	children <- graph[[gene]]
-	graph[[gene]] <- c()  # remove node after traversed
+traverseGene <- function(myenv,gene,mapkG,namekey,fout){
+	if(length(myenv$edges[[gene]]) == 0){ # reached a dead end
+		return(myenv)
+	}
+	children <- myenv$edges[[gene]]
+	myenv$edges[[gene]] <- c()  # remove node after traversed
 	for(c in children){
-		if(c %in% targets){
-			edat <- getKEGGedgeData(mapkG,paste(t1,"~",c,sep="")) # get edge info so we can mark type
+		if(c %in% myenv$targets){
+			edat <- getKEGGedgeData(mapkG,paste(myenv$root,"~",c,sep="")) # get edge info so we can mark type
 			if(is.null(edat))
 				etype <- "indirect"
 			else
-				etype <- getName(getSubtype(edat)[[1]])
-			writeLines(paste(namekey[[t1]],etype,namekey[[c]],sep=" "),fout)
+				etype <- gsub(" ","",getName(getSubtype(edat)[[1]]))
+			newconnect <- paste(namekey[[myenv$root]],etype,namekey[[c]],sep=" ")
+			if(! newconnect %in% myenv$foundpaths){
+				myenv$foundpaths <- append(myenv$foundpaths,newconnect)
+				writeLines(newconnect,fout)
+			}
 		}
 		# go as far down as possible, updating graph to avoid retracing
-		graph<-traverseGene(graph,c,t1,targets,mapkG,pathname,namekey,fout)
+		traverseGene(myenv,c,mapkG,namekey,fout)
 	}
 }
 
